@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "shellsafe"
+dynamic = ["version"]
+description = "Safe shell commands via Python 3.14 template strings. Injection-proof by construction."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.14"
+authors = [{ name = "Rahul Sharma", email = "rahulxsh@gmail.com" }]
+keywords = [
+    "shell", "subprocess", "injection", "security", "template-strings",
+    "t-strings", "pep750", "command-injection", "automation",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.scripts]
+shellsafe = "shellsafe.cli:main"
+
+[project.urls]
+Repository = "https://github.com/rahulXs/shellsafe"
+Issues = "https://github.com/rahulXs/shellsafe/issues"
+Changelog = "https://github.com/rahulXs/shellsafe/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+path = "src/shellsafe/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/shellsafe"]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+strict = true
+python_version = "3.14"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --tb=short"
+
+[tool.ruff.lint.per-file-ignores]
+# RAW() is a deliberate loud trust marker; the uppercase name is the API.
+"src/shellsafe/raw.py" = ["N802"]
+"src/shellsafe/__init__.py" = ["N999"]
