@@ -1,5 +1,6 @@
 """Renderer unit tests: argv construction, refusals, value resolution."""
 
+import sys
 from string.templatelib import Interpolation, Template
 
 import pytest
@@ -136,6 +137,10 @@ def test_raw_inside_real_tstring_syntax():
 # --- shell route: rendering works now; execution arrives in 0.2 ---
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="shell routes are refused on Windows by policy (see docs/07)",
+)
 def test_metacharacters_route_to_shell_mode():
     p = plan(Template("cat ", interp("my file.txt"), " | wc -l"))
     assert p.mode == "shell"

@@ -5,7 +5,7 @@ import sys
 import pytest
 
 from shellsafe import capture, shx
-from shellsafe.errors import ShellSafeError
+from shellsafe.errors import ShellSafeError, UnsupportedPlatformError
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="posix-only execution test")
@@ -32,8 +32,13 @@ def test_interpolation_with_spaces_stays_one_argument():
 
 
 def test_shell_mode_execution_not_yet_available():
-    # rendering and inspection work today; execution gate is explicit until v0.2
+    # posix: rendering works, execution gate is explicit until v0.2
+    # windows: the route itself is refused before any process spawns
     p = t"cat /etc/hostname | wc -l"
 
-    with pytest.raises(ShellSafeError, match=r"0\.2"):
-        shx(p)
+    if sys.platform == "win32":
+        with pytest.raises(UnsupportedPlatformError):
+            shx(p)
+    else:
+        with pytest.raises(ShellSafeError, match=r"0\.2"):
+            shx(p)
