@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format follows
 Keep a Changelog; versioning follows SemVer.
 
+## [0.1.1] - 2026-08-24
+
+### Changed
+
+- Project description rewritten
+- README restructured for PyPI: package page now leads with the why, usage and
+  limits; contributing details stay in the repository only
+
 ## [0.1.0] - 2026-08-24
 
 ### Added

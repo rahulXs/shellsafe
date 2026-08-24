@@ -1,7 +1,7 @@
 # shellsafe
 
-> Safe shell commands via Python 3.14 template strings. Injection-proof by
-> construction.
+> Run shell commands safely using Python 3.14 template strings. Values can never
+> turn into commands.
 
 ```python
 from shellsafe import run
@@ -12,18 +12,22 @@ run(t"git commit -m {message}")
 # one command; the scary text is just an argument
 ```
 
-## Why
+## Why this package exists
 
-The dominant pattern in scripts and automation is still this:
+Python 3.14 added template strings (PEP 750). Now Python keeps your fixed text
+and your values separate at the language level.
+
+Shell commands are the first place people want to use this. That is because
+f-strings inside shell commands have caused real security bugs for ten years:
 
 ```python
-subprocess.run(f"git commit -m {message}", shell=True)   # injection waiting to happen
+subprocess.run(f"git commit -m {message}", shell=True)
+# if message = "fix; rm -rf ~"  ->  two commands run. The second one is bad.
 ```
 
-Python 3.14 template strings (`t"..."`) separate static text from interpolated
-values. shellsafe turns that structure into argv lists where interpolated values
-are always data, never commands. When you genuinely need pipes, shell mode quotes
-every value with POSIX rules first.
+Python planned to solve this officially (PEP 787), but that plan was postponed.
+So today there is no standard way to run shell commands safely with templates.
+This package fills that gap.
 
 ## Install
 
@@ -31,11 +35,11 @@ every value with POSIX rules first.
 pip install shellsafe
 ```
 
-Requires Python 3.14+ (template strings).
+Needs Python 3.14 or newer.
 
-## Usage
+## How to use
 
-Run a command. Interpolated values are always single arguments:
+Run a command. Your values always stay one argument each:
 
 ```python
 from shellsafe import run
@@ -44,7 +48,7 @@ run(t"mkdir {path}")
 run(t"docker build -t {tag} .", check=True, timeout=300)
 ```
 
-Capture output as text:
+Get the output as text:
 
 ```python
 from shellsafe import capture
@@ -53,7 +57,7 @@ res = capture(t"grep {pattern} {file}")
 print(res.stdout, res.returncode)
 ```
 
-Pipes and redirections on POSIX (values are quoted with `shlex.quote` first):
+Need pipes? Works on Linux and macOS. Your values are quoted safely first:
 
 ```python
 from shellsafe import shx
@@ -61,44 +65,42 @@ from shellsafe import shx
 shx(t"cat {file} | wc -l")
 ```
 
-Inspect exactly what will execute:
+Want to see exactly what will run?
 
 ```python
-from shellsafe import plan  # lower-level: render without running
+from shellsafe import plan
 
 print(plan(t"git commit -m {message}"))
 # argv: ["git","commit","-m","fix; rm -rf ~"]
 ```
 
-## What it refuses
+## Safety rules
 
-| Case | Behavior |
+| Case | What happens |
 |---|---|
-| Interpolation as the executable | error: the command comes from static text only |
-| Shell route on Windows | error: cmd.exe quoting cannot be made injection-safe; use argv mode |
-| RAW misuse | error: one argument, verbatim, nesting refused |
+| Any value you pass | becomes one argument, exactly as given |
+| Value used as the program name | error: program names must be written as fixed text |
+| Shell features on Windows | error: we cannot make Windows safe this way, so we say no |
+| RAW() misuse | error: one value only, used as-is, no nesting |
 
-`RAW("...")` / `RAW(["a", "b"])` is the single explicit trust boundary for
-pre-quoted content. Every use site is greppable.
+`RAW(...)` marks content you have already made safe by hand. It is loud and easy
+to find in code review, so trust is never hidden.
 
 ## Limits
 
-- Windows: interpolated shell routes are refused rather than approximated;
-  argv-mode commands work fully.
-- Bytes interpolations are rejected: decode explicitly first.
-- Runtime behavior after import is your test suite's job, same trust model as
-  calling subprocess yourself.
+- On Windows, commands with pipes do not work. Plain commands work fully.
+- Byte values are rejected. Decode them first.
+- We keep your command safe to build and run. Testing what your command does is
+  still your job.
 
-## Contributing
+## Needs
 
-Issues and PRs welcome. Security reports go privately to the maintainer, never
-through public issues.
+- Python 3.14 or newer
+- Linux, macOS, Windows (pipes work on Linux and macOS only)
 
-## Requirements
+## More
 
-- CPython >= 3.14 (uses template strings from PEP 750)
-- Linux, macOS, Windows (Windows supports argv mode; POSIX-only shell mode)
+- Source and issues: [github.com/rahulXs/shellsafe](https://github.com/rahulXs/shellsafe)
+- Want to help? See CONTRIBUTING.md in the repository.
 
-## License
-
-MIT
+License: MIT
