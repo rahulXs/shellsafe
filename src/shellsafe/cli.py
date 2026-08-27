@@ -24,7 +24,7 @@ def _print_version_matrix() -> None:
     py = platform.python_version()
     print(f"shellsafe {__version__} · python {py} · {sys.platform}")
     print("argv-mode: available")
-    print("shell-mode: arriving in 0.2")
+    print("shell-mode: available (posix)")
     print("audit: arriving in 0.3")
 
 

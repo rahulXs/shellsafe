@@ -19,11 +19,6 @@ from .raw import Raw
 
 _NUL = "\x00"
 
-# Static-text characters that require shell semantics (pipes, redirection,
-# substitution, globs, comments). Whitespace is absent here: it splits words
-# in argv mode rather than forcing a shell.
-METACHARACTERS: frozenset[str] = frozenset("|&;()<>$`\"'*?!#\n\r\t\\")
-
 
 @dataclass(frozen=True, slots=True)
 class ExecutionPlan:
@@ -189,4 +184,7 @@ def _render_shell(parts: list[Segment]) -> ExecutionPlan:
             resolved = _resolve(part)
             _reject_nul(resolved)
             line_parts.append(shlex.quote(resolved))
-    return ExecutionPlan(mode="shell", shell_line="".join(line_parts))
+    line = "".join(line_parts).strip()
+    if not line:
+        raise ShellSafeTypeError("empty command")
+    return ExecutionPlan(mode="shell", shell_line=line)

@@ -3,17 +3,13 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from dataclasses import dataclass
 from typing import Any, cast
 
 from .errors import ArgvOnlyError, ShellSafeError
 from .raw import Raw  # noqa: F401  (re-exported through the package root)
 from .render import ExecutionPlan
-
-_SHELL_MODE_PENDS = (
-    "shell-mode execution arrives in shellsafe 0.2; "
-    "this release covers argv-mode commands"
-)
 
 _ALLOWED_KWARGS = frozenset(
     {
@@ -36,8 +32,8 @@ _ALLOWED_KWARGS = frozenset(
 def _validate_kwargs(kwargs: dict[str, object]) -> None:
     if "shell" in kwargs:
         raise ShellSafeError(
-            "shellsafe never passes shell=True; use shx() on posix for pipes and "
-            "redirections"
+            "shellsafe never passes shell=True; use shx() for pipes and "
+            "redirections on posix"
         )
     unknown = set(kwargs) - _ALLOWED_KWARGS
     if unknown:
@@ -54,6 +50,14 @@ def plan(template: object) -> ExecutionPlan:
     return render_plan(template)
 
 
+def _pass_through(kwargs: dict[str, object]) -> dict[str, Any]:
+    """Filter kwargs to the allowed subprocess.run set."""
+    return cast(
+        "dict[str, Any]",
+        {k: v for k, v in kwargs.items() if k in _ALLOWED_KWARGS},
+    )
+
+
 def run(template: object, /, **kwargs: object) -> subprocess.CompletedProcess[str]:
     """Render the template and execute it.
 
@@ -64,14 +68,17 @@ def run(template: object, /, **kwargs: object) -> subprocess.CompletedProcess[st
     _validate_kwargs(kwargs)
     rendered = plan(template)
     if rendered.mode == "shell":
-        raise ShellSafeError(_SHELL_MODE_PENDS)
+        if sys.platform.startswith("win"):
+            raise ShellSafeError(
+                "shell mode is posix-only; restructure the command without "
+                "pipes or redirections, or run under wsl"
+            )
+        raise ShellSafeError(
+            "this command contains shell metacharacters; use shx() instead of "
+            "run() to execute pipes and redirections"
+        )
     assert rendered.argv is not None
-    # passthrough boundary: values are caller-owned subprocess kwargs
-    typed_kwargs = cast(
-        "dict[str, Any]",
-        {k: v for k, v in kwargs.items() if k in _ALLOWED_KWARGS},
-    )
-    result = subprocess.run(rendered.argv, **typed_kwargs)
+    result = subprocess.run(rendered.argv, **_pass_through(kwargs))
     return cast("subprocess.CompletedProcess[str]", result)
 
 
@@ -101,12 +108,12 @@ def capture(template: object, /, **kwargs: object) -> CaptureResult:
     )
 
 
-def shx(template: object, /, **kwargs: object) -> object:
-    """Shell-route alias for templates that need pipes or redirections.
+def shx(template: object, /, **kwargs: object) -> subprocess.CompletedProcess[str]:
+    """Execute a shell-routed template (pipes, redirections, globs).
 
-    Raises ArgvOnlyError when the template needs no shell at all, so a missing
-    pipe is never silently ignored. Full shell execution ships in shellsafe 0.2;
-    rendering and inspection work today via shellsafe.plan().
+    Interpolated values are POSIX shell-quoted automatically. The rendered line
+    runs under /bin/sh -c. Raises ArgvOnlyError when the template has no shell
+    metacharacters (use run() instead).
     """
     _validate_kwargs(kwargs)
     rendered = plan(template)
@@ -114,4 +121,9 @@ def shx(template: object, /, **kwargs: object) -> object:
         raise ArgvOnlyError(
             "template contains no shell metacharacters; use run() instead"
         )
-    raise ShellSafeError(_SHELL_MODE_PENDS)
+    assert rendered.shell_line is not None
+    result = subprocess.run(
+        ["/bin/sh", "-c", rendered.shell_line],
+        **_pass_through(kwargs),
+    )
+    return cast("subprocess.CompletedProcess[str]", result)

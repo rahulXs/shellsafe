@@ -88,7 +88,10 @@ to find in code review, so trust is never hidden.
 
 ## Limits
 
-- On Windows, commands with pipes do not work. Plain commands work fully.
+- Shell features (pipes, redirections) work on Linux and macOS only. Windows
+  supports plain commands only.
+- `run()` refuses templates that contain shell metacharacters. Use `shx()` for
+  those.
 - Byte values are rejected. Decode them first.
 - We keep your command safe to build and run. Testing what your command does is
   still your job.
