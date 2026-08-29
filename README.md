@@ -25,9 +25,9 @@ subprocess.run(f"git commit -m {message}", shell=True)
 # if message = "fix; rm -rf ~"  ->  two commands run. The second one is bad.
 ```
 
-Python planned to solve this officially (PEP 787), but that plan was postponed.
-So today there is no standard way to run shell commands safely with templates.
-This package fills that gap.
+Python planned to solve this officially (PEP 787), but that PEP was deferred to
+at least Python 3.15. So today there is no standard way to run shell commands
+safely with templates. This package fills that gap.
 
 ## Install
 
@@ -39,7 +39,8 @@ Needs Python 3.14 or newer.
 
 ## How to use
 
-Run a command. Your values always stay one argument each:
+Run a command. Your values always stay one argument each. `run()` never invokes
+a shell, so injection is impossible on any platform:
 
 ```python
 from shellsafe import run
