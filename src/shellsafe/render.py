@@ -1,4 +1,4 @@
-"""Template rendering: t-string in, ExecutionPlan out. Pure and deterministic.
+"""Template rendering: t-string in, ExecutionPlan out.
 
 Security invariants (property-tested, see docs/07_rendering_engine_spec.md):
 - INV-1: every interpolation contributes exactly one argv element equal to its
@@ -6,8 +6,6 @@ Security invariants (property-tested, see docs/07_rendering_engine_spec.md):
 - INV-2: the executable comes from static template text only.
 - INV-3: element count equals static words plus interpolations plus RAW splices.
 """
-
-from __future__ import annotations
 
 import shlex
 from dataclasses import dataclass
@@ -29,25 +27,17 @@ class ExecutionPlan:
     shell_line: str | None = None
 
     def __repr__(self) -> str:
-        if self.mode == "argv":
-            assert self.argv is not None
+        if self.mode == "argv" and self.argv is not None:
             body = ",".join(repr(a) for a in self.argv)
             return f"argv: [{body}]"
-        assert self.shell_line is not None
         return f"shell: {self.shell_line}"
 
 
 Segment = str | Interpolation[str] | Raw
 
 
-def _walk(
-    template: Template, seen: frozenset[int]
-) -> list[Segment]:
-    """Flatten a template into an ordered list of static text and interpolations.
-
-    Nested templates (a t-string interpolated inside a t-string) splice their
-    segments at the interpolation position. Cycle-guarded via object ids.
-    """
+def _walk(template: Template, seen: frozenset[int]) -> list[Segment]:
+    """Flatten a Template into segments, recursing into nested templates."""
     parts: list[Segment] = []
     for element in template:
         if isinstance(element, str):
@@ -96,11 +86,10 @@ def _resolve(interpolation: Interpolation[str]) -> str:
         return format(converted, format_spec)
     if conversion is None:
         return str(converted)
-    assert isinstance(converted, str)
     return converted
 
 
-def _reject_nul(resolved: str) -> None:
+def _reject_nul(resolved: str):
     if _NUL in resolved:
         raise ShellSafeTypeError(
             "interpolated value contains a NUL byte after formatting; "

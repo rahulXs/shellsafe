@@ -7,8 +7,6 @@ import pytest
 from shellsafe import capture, run, shx
 from shellsafe.errors import ArgvOnlyError, ShellSafeError, UnsupportedPlatformError
 
-# --- argv mode ---
-
 
 @pytest.mark.skipif(sys.platform == "win32", reason="posix-only execution test")
 def test_capture_round_trip():
@@ -33,7 +31,6 @@ def test_interpolation_with_spaces_stays_one_argument():
     assert res.stdout.strip() == "two words"
 
 
-# --- shell mode execution ---
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="posix-only execution test")
@@ -68,7 +65,6 @@ def test_shx_output_capture():
     assert res.stdout.strip() == "WORLD"
 
 
-# --- run() rejects shell mode ---
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="posix-only execution test")
@@ -77,7 +73,6 @@ def test_run_rejects_shell_metacharacters():
         run(t"echo hello | wc -l")
 
 
-# --- shx rejects argv-only templates ---
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="posix-only execution test")
@@ -86,7 +81,6 @@ def test_shx_rejects_argv_only_template():
         shx(t"echo hello")
 
 
-# --- Windows policy ---
 
 
 def test_shell_mode_execution_not_yet_available_on_windows():

@@ -1,6 +1,5 @@
 """RAW marker: the single explicit trust boundary."""
 
-from __future__ import annotations
 
 from .errors import RawUsageError
 

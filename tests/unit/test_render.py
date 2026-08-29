@@ -59,7 +59,6 @@ def test_nested_template_splices():
     assert p.argv == ("git", "commit", "-m", "msg with spaces")
 
 
-# --- refusals ---
 
 
 def test_non_template_refused():
@@ -134,7 +133,6 @@ def test_raw_inside_real_tstring_syntax():
     assert p.argv == ("echo", "a", "b", "done")
 
 
-# --- shell route: rendering works now; execution arrives in 0.2 ---
 
 
 @pytest.mark.skipif(

@@ -14,7 +14,6 @@ from shellsafe.render import plan
 text_values = st.text(st.characters(blacklist_characters="\x00"), max_size=200)
 
 
-# --- argv mode invariants ---
 
 
 @settings(max_examples=300)
@@ -41,7 +40,6 @@ def test_repr_round_trip_is_byte_stable(value: str):
     assert repr(p1) == repr(p2)
 
 
-# --- shell mode invariants ---
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="shell mode is posix-only")

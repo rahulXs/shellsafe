@@ -1,0 +1,232 @@
+"""Offline AST scanner for dangerous command construction.
+
+Never imports from the scanned project. Reads code only.
+"""
+
+import ast
+import json
+import sys
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+
+@dataclass(frozen=True, slots=True)
+class Finding:
+    """One audit finding."""
+
+    rule_id: str
+    title: str
+    severity: str
+    confidence: float
+    path: str
+    lineno: int
+    col: int
+    message: str
+    evidence: dict[str, Any] = field(default_factory=dict)
+    fix_hint: str = ""
+    ignored: bool = False
+    ignore_reason: str | None = None
+
+
+_EXECUTORS = {
+    "system": "os.system",
+    "popen": "os.popen",
+    "run": "subprocess.run",
+    "call": "subprocess.call",
+    "check_call": "subprocess.check_call",
+    "check_output": "subprocess.check_output",
+    "Popen": "subprocess.Popen",
+    "getoutput": "subprocess.getoutput",
+}
+
+_IMPORT_ALIAS = {
+    "os": "os",
+    "subprocess": "subprocess",
+}
+
+
+def _resolve_callee(node: ast.expr, aliases: dict[str, str]) -> str | None:
+    """Resolve a Call.func to an executor label like 'os.system'."""
+    if (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id in _IMPORT_ALIAS
+    ):
+        module = _IMPORT_ALIAS[node.value.id]
+        if node.attr in _EXECUTORS:
+            return f"{module}.{node.attr}"
+    if isinstance(node, ast.Name):
+        real = aliases.get(node.id, node.id)
+        if real in _EXECUTORS:
+            return _EXECUTORS[real]
+        if "." in real:
+            module, func = real.rsplit(".", 1)
+            if func in _EXECUTORS:
+                return f"{module}.{func}"
+    return None
+
+
+def au001(node: ast.Call, aliases: dict[str, str], path: str) -> Finding | None:
+    """f-string passed to a shell-executing call."""
+    callee = _resolve_callee(node.func, aliases)
+    if callee is None:
+        return None
+    for arg in node.args:
+        if isinstance(arg, ast.JoinedStr) and any(
+            isinstance(v, ast.FormattedValue) for v in arg.values
+        ):
+            return Finding(
+                rule_id="AU001",
+                title="f-string passed to shell-executing call",
+                severity="error",
+                confidence=0.95,
+                path=path,
+                lineno=node.lineno,
+                col=node.col_offset,
+                message=f"{callee} receives an f-string with interpolated value(s)",
+                evidence={
+                    "callee": callee,
+                    "interpolations": sum(
+                        1 for v in arg.values if isinstance(v, ast.FormattedValue)
+                    ),
+                },
+                fix_hint='use shellsafe.run(t"...") or pass an argv list',
+            )
+    return None
+
+
+RULES: list[tuple[str, Callable[..., Finding | None]]] = [
+    ("AU001", au001),
+]
+
+
+def _discover(paths: list[str]) -> list[Path]:
+    files: list[Path] = []
+    for raw in paths:
+        p = Path(raw)
+        if p.is_file() and p.suffix == ".py":
+            files.append(p)
+        elif p.is_dir():
+            files.extend(
+                f
+                for f in sorted(p.rglob("*.py"))
+                if not any(part.startswith(".") or part == "__pycache__" for part in f.parts)
+            )
+    return files
+
+
+def _import_aliases(tree: ast.Module) -> dict[str, str]:
+    """Map local names to real module.function for executor imports."""
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                local = alias.asname or alias.name
+                aliases[local] = alias.name
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            for alias in node.names:
+                local = alias.asname or alias.name
+                aliases[local] = f"{module}.{alias.name}"
+    return aliases
+
+
+def scan(paths: list[str]) -> list[Finding]:
+    """Scan Python files for audit findings."""
+    findings: list[Finding] = []
+    for path in _discover(paths):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        aliases = _import_aliases(tree)
+        rel = str(path)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                for _, rule in RULES:
+                    result = rule(node, aliases, rel)
+                    if result is not None:
+                        findings.append(result)
+    findings.sort(key=lambda f: (f.severity != "error", f.path, f.lineno))
+    return findings
+
+
+_COLORS = {"error": "\033[31m", "warning": "\033[33m", "info": "\033[36m", "reset": "\033[0m"}
+
+
+def _color(text: str, severity: str) -> str:
+    c = _COLORS.get(severity, "")
+    return f"{c}{text}{_COLORS['reset']}" if c else text
+
+
+def report_terminal(findings: list[Finding]) -> str:
+    """Render findings as a terminal table."""
+    if not findings:
+        return "no findings"
+    use_color = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+    lines = [
+        f"{'SEV':<9} {'RULE':<7} {'FILE':<40} {'LINE':>5}  MESSAGE",
+        "-" * 90,
+    ]
+    for f in findings:
+        sev = _color(f.severity.upper(), f.severity) if use_color else f.severity.upper()
+        path = f.path if len(f.path) <= 40 else "..." + f.path[-37:]
+        lines.append(f"{sev:<18} {f.rule_id:<7} {path:<40} {f.lineno:>5}  {f.message}")
+    return "\n".join(lines)
+
+
+def report_json(report: dict[str, object]) -> str:
+    """Render the full report as JSON."""
+    return json.dumps(report, indent=2)
+
+
+def scan_report(paths: list[str]) -> dict[str, object]:
+    """Scan and return a report dict matching schema v1."""
+    start = time.monotonic()
+    findings = scan(paths)
+    duration_ms = round((time.monotonic() - start) * 1000, 1)
+
+    errors = sum(1 for f in findings if f.severity == "error" and not f.ignored)
+    warnings = sum(1 for f in findings if f.severity == "warning" and not f.ignored)
+    info = sum(1 for f in findings if f.severity == "info" and not f.ignored)
+    ignored = sum(1 for f in findings if f.ignored)
+
+    from .._version import __version__
+
+    return {
+        "schema_version": 1,
+        "tool": {"name": "shellsafe", "version": __version__},
+        "run": {
+            "duration_ms": duration_ms,
+            "host_python": f"{sys.version_info.major}.{sys.version_info.minor}"
+            f".{sys.version_info.micro}",
+            "paths": paths,
+        },
+        "summary": {
+            "errors": errors,
+            "warnings": warnings,
+            "info": info,
+            "ignored": ignored,
+            "verdict": "fail" if errors > 0 else "pass",
+        },
+        "findings": [
+            {
+                "rule_id": f.rule_id,
+                "title": f.title,
+                "severity": f.severity,
+                "confidence": f.confidence,
+                "path": f.path,
+                "lineno": f.lineno,
+                "col": f.col,
+                "message": f.message,
+                "evidence": f.evidence,
+                "fix_hint": f.fix_hint,
+                "ignored": f.ignored,
+                "ignore_reason": f.ignore_reason,
+            }
+            for f in findings
+        ],
+    }

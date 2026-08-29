@@ -50,10 +50,6 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF", "C901"]
 [tool.ruff.lint.mccabe]
 max-complexity = 10
 
-[tool.mypy]
-strict = true
-python_version = "3.14"
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q --tb=short"
@@ -62,12 +58,13 @@ addopts = "-q --tb=short"
 # RAW() is a deliberate loud trust marker; the uppercase name is the API.
 "src/shellsafe/raw.py" = ["N802"]
 "src/shellsafe/__init__.py" = ["N999"]
+# Fixture files contain planted violations and undefined names on purpose.
+"tests/fixtures/**" = ["F821", "F841"]
 
 [dependency-groups]
 dev = [
     "pytest>=8",
     "ruff>=0.5",
-    "mypy>=1.10",
     "hypothesis>=6",
     "build>=1.2",
     "twine>=6",

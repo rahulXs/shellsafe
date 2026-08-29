@@ -33,7 +33,6 @@ def payloads() -> list[tuple[str, str]]:
     return out
 
 
-# --- argv mode ---
 
 
 @pytest.mark.parametrize(
@@ -47,7 +46,6 @@ def test_payload_stays_single_argument(name: str, payload: str):
     assert p.argv == ("echo", payload)
 
 
-# --- shell mode ---
 
 
 @pytest.mark.parametrize(

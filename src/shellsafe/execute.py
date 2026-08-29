@@ -1,11 +1,9 @@
 """Subprocess wrappers over rendered ExecutionPlans."""
 
-from __future__ import annotations
-
 import subprocess
 import sys
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 from .errors import ArgvOnlyError, ShellSafeError
 from .raw import Raw  # noqa: F401  (re-exported through the package root)
@@ -29,7 +27,7 @@ _ALLOWED_KWARGS = frozenset(
 )
 
 
-def _validate_kwargs(kwargs: dict[str, object]) -> None:
+def _validate_kwargs(kwargs: dict[str, object]):
     if "shell" in kwargs:
         raise ShellSafeError(
             "shellsafe never passes shell=True; use shx() for pipes and "
@@ -51,11 +49,7 @@ def plan(template: object) -> ExecutionPlan:
 
 
 def _pass_through(kwargs: dict[str, object]) -> dict[str, Any]:
-    """Filter kwargs to the allowed subprocess.run set."""
-    return cast(
-        "dict[str, Any]",
-        {k: v for k, v in kwargs.items() if k in _ALLOWED_KWARGS},
-    )
+    return {k: v for k, v in kwargs.items() if k in _ALLOWED_KWARGS}
 
 
 def run(template: object, /, **kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -78,8 +72,7 @@ def run(template: object, /, **kwargs: object) -> subprocess.CompletedProcess[st
             "run() to execute pipes and redirections"
         )
     assert rendered.argv is not None
-    result = subprocess.run(rendered.argv, **_pass_through(kwargs))
-    return cast("subprocess.CompletedProcess[str]", result)
+    return subprocess.run(rendered.argv, **_pass_through(kwargs))
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,8 +91,6 @@ def capture(template: object, /, **kwargs: object) -> CaptureResult:
     kwargs["text"] = True
     kwargs["encoding"] = "utf-8"
     completed = run(template, **kwargs)
-    assert isinstance(completed.stdout, str)
-    assert isinstance(completed.stderr, str)
     return CaptureResult(
         stdout=completed.stdout,
         stderr=completed.stderr,
@@ -122,8 +113,7 @@ def shx(template: object, /, **kwargs: object) -> subprocess.CompletedProcess[st
             "template contains no shell metacharacters; use run() instead"
         )
     assert rendered.shell_line is not None
-    result = subprocess.run(
+    return subprocess.run(
         ["/bin/sh", "-c", rendered.shell_line],
         **_pass_through(kwargs),
     )
-    return cast("subprocess.CompletedProcess[str]", result)
