@@ -3,6 +3,33 @@
 All notable changes to this project are documented here. Format follows
 Keep a Changelog; versioning follows SemVer.
 
+## [0.3.0] - 2026-08-29
+
+### Added
+
+- Offline audit scanner: AST-based detection of f-strings passed to shell
+  executors (`os.system`, `subprocess.run`, `subprocess.call`, etc.)
+- AU001 rule: flags f-string interpolation in shell executor arguments with
+  fix-hint suggesting template strings
+- Import alias tracking: handles `import subprocess as sp`, `from os import
+  system`, etc.
+- CLI `shellsafe audit` command with terminal table and JSON output
+- `--json` flag for machine-readable findings
+- `--severity` flag to filter by minimum severity level
+- Audit fixture corpus: 6 positive cases + 4 safe cases
+- Unit tests for scanner, integration tests for CLI audit
+
+### Changed
+
+- Collapse `audit/rules.py` and `reporters.py` into single `audit/scanner.py`
+- CLI refactored with dedicated `_run_audit` handler
+
+### Removed
+
+- mypy (ruff catches real bugs)
+- `cast()` calls on values that already have the right type
+
+
 ## [0.2.0] - 2026-08-27
 
 ### Added

@@ -86,6 +86,27 @@ print(plan(t"git commit -m {message}"))
 `RAW(...)` marks content you have already made safe by hand. It is loud and easy
 to find in code review, so trust is never hidden.
 
+## Find old dangerous patterns
+
+Already have code using f-strings in shell commands? The scanner finds them:
+
+```bash
+shellsafe audit src/
+```
+
+It detects f-strings passed to `os.system`, `subprocess.run(shell=True)`, and
+other shell executors. Get machine-readable output:
+
+```bash
+shellsafe audit src/ --json
+```
+
+Filter by severity:
+
+```bash
+shellsafe audit src/ --severity warning
+```
+
 ## Limits
 
 - Shell features (pipes, redirections) work on Linux and macOS only. Windows
