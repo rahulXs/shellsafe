@@ -62,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"shellsafe {__version__} . python {py} . {sys.platform}")
         print("argv-mode: available")
         print("shell-mode: available (posix)")
-        print("audit: available (AU001)")
+        print("audit: available (AU001-AU004)")
         return exitcodes.OK
     if args.command == "audit":
         return _run_audit(args)

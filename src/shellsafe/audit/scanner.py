@@ -155,9 +155,142 @@ def au002(node: ast.Call, aliases: dict[str, str], path: str) -> Finding | None:
     return None
 
 
+def _track_dynamic_vars(tree: ast.Module) -> set[str]:
+    """Find variables assigned dynamic string expressions."""
+    dynamic: set[str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not _is_dynamic_string(node.value):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                dynamic.add(target.id)
+    return dynamic
+
+
+def au003(node: ast.Call, aliases: dict[str, str], path: str) -> Finding | None:
+    """Command string built by assembly passed to shell executor."""
+    callee = _resolve_callee(node.func, aliases)
+    if callee is None:
+        return None
+    for arg in node.args:
+        if isinstance(arg, ast.Name):
+            return Finding(
+                rule_id="AU003",
+                title="command string passed to shell executor",
+                severity="warning",
+                confidence=0.80,
+                path=path,
+                lineno=node.lineno,
+                col=node.col_offset,
+                message=f"{callee} receives variable '{arg.id}' as command string",
+                evidence={
+                    "callee": callee,
+                    "var": arg.id,
+                },
+                fix_hint='use shellsafe.run(t"...") or pass an argv list',
+            )
+        if isinstance(arg, ast.BinOp) and isinstance(arg.op, ast.Add):
+            return Finding(
+                rule_id="AU003",
+                title="command string passed to shell executor",
+                severity="warning",
+                confidence=0.85,
+                path=path,
+                lineno=node.lineno,
+                col=node.col_offset,
+                message=f"{callee} receives concatenated string as command",
+                evidence={
+                    "callee": callee,
+                    "kind": "concatenation",
+                },
+                fix_hint='use shellsafe.run(t"...") or pass an argv list',
+            )
+        if (
+            isinstance(arg, ast.Call)
+            and isinstance(arg.func, ast.Attribute)
+            and arg.func.attr == "format"
+        ):
+            return Finding(
+                rule_id="AU003",
+                title="command string passed to shell executor",
+                severity="warning",
+                confidence=0.85,
+                path=path,
+                lineno=node.lineno,
+                col=node.col_offset,
+                message=f"{callee} receives .format() result as command string",
+                evidence={
+                    "callee": callee,
+                    "kind": ".format()",
+                },
+                fix_hint='use shellsafe.run(t"...") or pass an argv list',
+            )
+        if (
+            isinstance(arg, ast.JoinedStr)
+            and any(isinstance(v, ast.FormattedValue) for v in arg.values)
+        ):
+            return Finding(
+                rule_id="AU003",
+                title="command string passed to shell executor",
+                severity="error",
+                confidence=0.95,
+                path=path,
+                lineno=node.lineno,
+                col=node.col_offset,
+                message=f"{callee} receives f-string as command string",
+                evidence={
+                    "callee": callee,
+                    "kind": "f-string",
+                },
+                fix_hint='use shellsafe.run(t"...") or pass an argv list',
+            )
+    return None
+
+
+def _has_timeout(node: ast.Call) -> bool:
+    return any(kw.arg == "timeout" for kw in node.keywords)
+
+
+_EXECUTORS_WITH_TIMEOUT = {
+    "subprocess.run",
+    "subprocess.call",
+    "subprocess.check_call",
+    "subprocess.check_output",
+}
+
+
+def au004(node: ast.Call, aliases: dict[str, str], path: str) -> Finding | None:
+    """Subprocess call without timeout."""
+    callee = _resolve_callee(node.func, aliases)
+    if callee is None:
+        return None
+    if callee not in _EXECUTORS_WITH_TIMEOUT:
+        return None
+    if _has_timeout(node):
+        return None
+    return Finding(
+        rule_id="AU004",
+        title="subprocess call without timeout",
+        severity="info",
+        confidence=0.95,
+        path=path,
+        lineno=node.lineno,
+        col=node.col_offset,
+        message=f"{callee} has no timeout parameter",
+        evidence={
+            "callee": callee,
+        },
+        fix_hint="add timeout= to prevent hanging",
+    )
+
+
 RULES: list[tuple[str, Callable[..., Finding | None]]] = [
     ("AU001", au001),
     ("AU002", au002),
+    ("AU003", au003),
+    ("AU004", au004),
 ]
 
 
@@ -178,7 +311,7 @@ def _discover(paths: list[str]) -> list[Path]:
 
 def _import_aliases(tree: ast.Module) -> dict[str, str]:
     """Map local names to real module.function for executor imports."""
-    aliases: dict[str, str] = {}
+    aliases = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:

@@ -3,6 +3,22 @@
 All notable changes to this project are documented here. Format follows
 Keep a Changelog; versioning follows SemVer.
 
+## [0.3.2] - 2026-08-30
+
+### Added
+
+- AU003 rule: detect command-string assembly (variable, concatenation,
+  .format(), f-string passed as command to shell executor)
+- AU004 rule: detect subprocess calls without timeout (info severity)
+- AU003 fixture corpus: 6 positive cases + 3 safe cases
+- AU004 fixture corpus: 5 positive cases + 4 safe cases
+- Unit tests for AU003 and AU004 detection
+- Integration tests for CLI audit with AU003 and AU004
+
+### Changed
+
+- CLI version string shows "AU001-AU004" instead of "AU001"
+
 ## [0.3.1] - 2026-08-30
 
 ### Added

@@ -1,4 +1,4 @@
-"""Audit scanner tests: AU001 and AU002 rule detection against fixture corpus."""
+"""Audit scanner tests: AU001-AU004 rule detection against fixture corpus."""
 
 from pathlib import Path
 
@@ -20,10 +20,9 @@ def test_au001_detects_positive_cases():
 
 def test_au001_ignores_safe_cases():
     findings = scan([str(FIXTURES / "au001_sample.py")])
-    flagged_lines = {f.lineno for f in findings}
-    # safe cases are on lines 26-32; none should appear
+    au001_lines = {f.lineno for f in findings if f.rule_id == "AU001"}
     for line in range(26, 33):
-        assert line not in flagged_lines, f"false positive on line {line}"
+        assert line not in au001_lines, f"false positive on line {line}"
 
 
 def test_au001_confidence():
@@ -88,8 +87,8 @@ def test_scan_returns_sorted():
     findings = scan([str(FIXTURES / "au002_sample.py")])
     severities = [f.severity for f in findings]
     errors = [s for s in severities if s == "error"]
-    warnings = [s for s in severities if s == "warning"]
-    assert errors + warnings == severities
+    non_errors = [s for s in severities if s != "error"]
+    assert severities == errors + non_errors
 
 
 def test_scan_empty_dir(tmp_path: Path):
@@ -102,3 +101,67 @@ def test_scan_syntax_error_skipped(tmp_path: Path):
     bad.write_text("def x(\n")
     findings = scan([str(tmp_path)])
     assert findings == []
+
+
+def test_au003_detects_positive_cases():
+    findings = scan([str(FIXTURES / "au003_sample.py")])
+    au003 = [f for f in findings if f.rule_id == "AU003"]
+    assert len(au003) == 6
+    callees = {f.evidence["callee"] for f in au003}
+    assert "os.system" in callees
+    assert "subprocess.run" in callees
+
+
+def test_au003_ignores_safe_cases():
+    findings = scan([str(FIXTURES / "au003_sample.py")])
+    au003_lines = {f.lineno for f in findings if f.rule_id == "AU003"}
+    for line in range(32, 40):
+        assert line not in au003_lines, f"false positive on line {line}"
+
+
+def test_au003_severity():
+    findings = scan([str(FIXTURES / "au003_sample.py")])
+    au003 = [f for f in findings if f.rule_id == "AU003"]
+    for f in au003:
+        assert f.severity in ("warning", "error")
+
+
+def test_au004_detects_positive_cases():
+    findings = scan([str(FIXTURES / "au004_sample.py")])
+    au004 = [f for f in findings if f.rule_id == "AU004"]
+    assert len(au004) == 5
+    callees = {f.evidence["callee"] for f in au004}
+    assert "subprocess.run" in callees
+    assert "subprocess.call" in callees
+    assert "subprocess.check_call" in callees
+    assert "subprocess.check_output" in callees
+
+
+def test_au004_ignores_safe_cases():
+    findings = scan([str(FIXTURES / "au004_sample.py")])
+    au004_lines = {f.lineno for f in findings if f.rule_id == "AU004"}
+    for line in range(21, 29):
+        assert line not in au004_lines, f"false positive on line {line}"
+
+
+def test_au004_severity():
+    findings = scan([str(FIXTURES / "au004_sample.py")])
+    au004 = [f for f in findings if f.rule_id == "AU004"]
+    for f in au004:
+        assert f.severity == "info"
+
+
+def test_au004_confidence():
+    findings = scan([str(FIXTURES / "au004_sample.py")])
+    au004 = [f for f in findings if f.rule_id == "AU004"]
+    for f in au004:
+        assert f.confidence == 0.95
+
+
+def test_all_rules_found():
+    findings = scan([str(FIXTURES)])
+    rule_ids = {f.rule_id for f in findings}
+    assert "AU001" in rule_ids
+    assert "AU002" in rule_ids
+    assert "AU003" in rule_ids
+    assert "AU004" in rule_ids
