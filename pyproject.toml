@@ -30,6 +30,7 @@ dependencies = []
 shellsafe = "shellsafe.cli:main"
 
 [project.urls]
+Homepage = "https://github.com/rahulXs/shellsafe"
 Repository = "https://github.com/rahulXs/shellsafe"
 Issues = "https://github.com/rahulXs/shellsafe/issues"
 Changelog = "https://github.com/rahulXs/shellsafe/blob/main/CHANGELOG.md"
