@@ -98,8 +98,66 @@ def au001(node: ast.Call, aliases: dict[str, str], path: str) -> Finding | None:
     return None
 
 
+def _has_shell_true(node: ast.Call) -> bool:
+    for kw in node.keywords:
+        if kw.arg == "shell" and isinstance(kw.value, ast.Constant) and kw.value.value is True:
+            return True
+    return False
+
+
+def _is_dynamic_string(node: ast.expr) -> bool:
+    if isinstance(node, ast.JoinedStr):
+        return any(isinstance(v, ast.FormattedValue) for v in node.values)
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "format"
+    ):
+        return True
+    if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Mod)):
+        return True
+    return isinstance(node, (ast.Name, ast.Attribute))
+
+
+def au002(node: ast.Call, aliases: dict[str, str], path: str) -> Finding | None:
+    """shell=True with dynamic content in shell-executing call."""
+    callee = _resolve_callee(node.func, aliases)
+    if callee is None:
+        return None
+    if not _has_shell_true(node):
+        return None
+    for arg in node.args:
+        if _is_dynamic_string(arg):
+            kind = "f-string" if isinstance(arg, ast.JoinedStr) else "dynamic content"
+            if isinstance(arg, ast.Call) and isinstance(arg.func, ast.Attribute):
+                kind = ".format() call"
+            elif isinstance(arg, ast.BinOp) and isinstance(arg.op, ast.Add):
+                kind = "string concatenation"
+            elif isinstance(arg, ast.BinOp) and isinstance(arg.op, ast.Mod):
+                kind = "%-format string"
+            elif isinstance(arg, (ast.Name, ast.Attribute)):
+                kind = "variable"
+            return Finding(
+                rule_id="AU002",
+                title="shell=True with dynamic content",
+                severity="warning",
+                confidence=0.90,
+                path=path,
+                lineno=node.lineno,
+                col=node.col_offset,
+                message=f"{callee} uses shell=True with {kind}",
+                evidence={
+                    "callee": callee,
+                    "kind": kind,
+                },
+                fix_hint='use shellsafe.run(t"...") or pass an argv list without shell=True',
+            )
+    return None
+
+
 RULES: list[tuple[str, Callable[..., Finding | None]]] = [
     ("AU001", au001),
+    ("AU002", au002),
 ]
 
 

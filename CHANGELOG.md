@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format follows
 Keep a Changelog; versioning follows SemVer.
 
+## [0.3.1] - 2026-08-30
+
+### Added
+
+- AU002 rule: detect `shell=True` with dynamic content (.format(), string
+  concatenation, %-formatting, variables) in shell executor calls
+- AU002 fixture corpus: 6 positive cases + 5 safe cases
+- Unit tests for AU002 detection, confidence, and severity
+- Integration tests for CLI audit with AU002
+
 ## [0.3.0] - 2026-08-29
 
 ### Added
