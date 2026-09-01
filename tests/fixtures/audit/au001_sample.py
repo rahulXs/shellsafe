@@ -5,7 +5,7 @@ import subprocess
 from os import system
 from subprocess import run as subprocess_run
 
-# --- positive cases (should produce AU001 findings) ---
+# positive cases (should produce AU001 findings)
 
 os.system(f"echo {user_input}")
 
@@ -20,7 +20,7 @@ subprocess_run(f"grep {pattern} {file}")
 subprocess.getoutput(f"echo {user_input}")
 
 
-# --- safe cases (should NOT produce findings) ---
+# safe cases (should NOT produce findings)
 
 subprocess.run(["echo", user_input])
 

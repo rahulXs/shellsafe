@@ -24,6 +24,18 @@ def _build_parser() -> argparse.ArgumentParser:
         default="warning",
         help="minimum severity to report (default: warning)",
     )
+    audit.add_argument(
+        "--show-ignored",
+        action="store_true",
+        help="show suppressed findings in output",
+    )
+    audit.add_argument(
+        "--ignore",
+        action="append",
+        default=[],
+        metavar="RULE",
+        help="suppress a rule (repeatable, e.g. --ignore AU001 --ignore AU004)",
+    )
 
     sub.add_parser("version", help="detailed version and capability matrix")
     return parser
@@ -32,7 +44,8 @@ def _build_parser() -> argparse.ArgumentParser:
 def _run_audit(args: argparse.Namespace) -> int:
     from .audit.scanner import Finding, report_json, report_terminal, scan_report
 
-    report = scan_report(args.paths)
+    ignore = set(args.ignore) if args.ignore else None
+    report = scan_report(args.paths, ignore=ignore)
     findings = report.get("findings", [])
 
     min_sev = _SEVERITY_ORDER.get(args.severity, 1)
@@ -44,7 +57,7 @@ def _run_audit(args: argparse.Namespace) -> int:
     if args.json_output:
         print(report_json(report))
     else:
-        print(report_terminal([Finding(**f) for f in filtered]))
+        print(report_terminal([Finding(**f) for f in filtered], show_ignored=args.show_ignored))
 
     summary = report.get("summary", {})
     return exitcodes.FINDINGS if summary.get("errors", 0) > 0 else exitcodes.OK
@@ -62,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"shellsafe {__version__} . python {py} . {sys.platform}")
         print("argv-mode: available")
         print("shell-mode: available (posix)")
-        print("audit: available (AU001-AU004)")
+        print("audit: available (AU001-AU004, suppression)")
         return exitcodes.OK
     if args.command == "audit":
         return _run_audit(args)

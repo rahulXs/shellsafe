@@ -7,7 +7,7 @@ METACHARACTERS = frozenset("|&;()<>$`\"'*?!#\\\n\r\t")
 IS_WINDOWS = sys.platform.startswith("win")
 
 
-def route_for(static_text: str) -> str:
+def route_for(static_text: str):
     """Return "argv" or "shell" for the given static template text.
 
     Raises UnsupportedPlatformError on Windows when shell features are requested.

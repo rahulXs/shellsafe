@@ -2,7 +2,7 @@
 
 import subprocess
 
-# --- positive cases (should produce AU002 findings) ---
+# positive cases (should produce AU002 findings)
 
 # f-string with shell=True (also caught by AU001)
 subprocess.run(f"echo {user_input}", shell=True)
@@ -23,7 +23,7 @@ subprocess.run(cmd, shell=True)
 subprocess.run(config.command, shell=True)
 
 
-# --- safe cases (should NOT produce AU002 findings) ---
+# safe cases (should NOT produce AU002 findings)
 
 # shell=True with list (safe)
 subprocess.run(["echo", user_input], shell=True)

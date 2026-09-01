@@ -3,7 +3,7 @@
 import os
 import subprocess
 
-# --- positive cases (should produce AU003 findings) ---
+# positive cases (should produce AU003 findings)
 
 # variable passed to executor
 cmd = "echo " + user_input
@@ -25,7 +25,7 @@ subprocess.run(cmd)
 subprocess.run("echo " + user_input)
 
 
-# --- safe cases (should NOT produce AU003 findings) ---
+# safe cases (should NOT produce AU003 findings)
 
 # list form (safe)
 subprocess.run(["echo", user_input])

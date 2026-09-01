@@ -3,6 +3,25 @@
 All notable changes to this project are documented here. Format follows
 Keep a Changelog; versioning follows SemVer.
 
+## [0.3.3] - 2026-09-01
+
+### Added
+
+- Inline suppression: `# shellsafe: ignore AU001 reason: <why>` comments
+- File-level suppression: `# shellsafe: ignore-file AU001` at top of file
+- Multi-rule suppression: `# shellsafe: ignore AU001, AU002 reason: <why>`
+- AU010 meta-warning: flags suppression comments without a reason
+- CLI `--show-ignored` flag to display suppressed findings
+- CLI `--ignore RULE` flag to suppress rules from command line (repeatable)
+- Suppression fixture corpus: inline, file-level, multi-rule, AU010 cases
+- Unit tests for suppression parsing and application
+- Integration tests for CLI suppression flags
+
+### Changed
+
+- Terminal reporter shows suppressed count and muted display for ignored findings
+- CLI version string shows "AU001-AU004, suppression"
+
 ## [0.3.2] - 2026-08-30
 
 ### Added

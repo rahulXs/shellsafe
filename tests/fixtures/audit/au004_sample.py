@@ -3,7 +3,7 @@
 import subprocess
 from subprocess import run as subprocess_run
 
-# --- positive cases (should produce AU004 findings) ---
+# positive cases (should produce AU004 findings)
 
 subprocess.run(["echo", "hello"])
 
@@ -16,7 +16,7 @@ subprocess.check_output(["echo", "hello"])
 subprocess_run(["echo", "hello"])
 
 
-# --- safe cases (should NOT produce AU004 findings) ---
+# safe cases (should NOT produce AU004 findings)
 
 subprocess.run(["echo", "hello"], timeout=10)
 

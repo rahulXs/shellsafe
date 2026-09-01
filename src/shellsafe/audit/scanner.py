@@ -7,7 +7,6 @@ import ast
 import json
 import sys
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -25,7 +24,7 @@ class Finding:
     lineno: int
     col: int
     message: str
-    evidence: dict[str, Any] = field(default_factory=dict)
+    evidence: dict[str, Any] = field(default_factory=dict)  # why: heterogeneous value types
     fix_hint: str = ""
     ignored: bool = False
     ignore_reason: str | None = None
@@ -48,7 +47,7 @@ _IMPORT_ALIAS = {
 }
 
 
-def _resolve_callee(node: ast.expr, aliases: dict[str, str]) -> str | None:
+def _resolve_callee(node: ast.expr, aliases: dict[str, str]):
     """Resolve a Call.func to an executor label like 'os.system'."""
     if (
         isinstance(node, ast.Attribute)
@@ -98,14 +97,14 @@ def au001(node: ast.Call, aliases: dict[str, str], path: str) -> Finding | None:
     return None
 
 
-def _has_shell_true(node: ast.Call) -> bool:
+def _has_shell_true(node: ast.Call):
     for kw in node.keywords:
         if kw.arg == "shell" and isinstance(kw.value, ast.Constant) and kw.value.value is True:
             return True
     return False
 
 
-def _is_dynamic_string(node: ast.expr) -> bool:
+def _is_dynamic_string(node: ast.expr):
     if isinstance(node, ast.JoinedStr):
         return any(isinstance(v, ast.FormattedValue) for v in node.values)
     if (
@@ -155,9 +154,9 @@ def au002(node: ast.Call, aliases: dict[str, str], path: str) -> Finding | None:
     return None
 
 
-def _track_dynamic_vars(tree: ast.Module) -> set[str]:
+def _track_dynamic_vars(tree: ast.Module):
     """Find variables assigned dynamic string expressions."""
-    dynamic: set[str] = {}
+    dynamic = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign):
             continue
@@ -249,7 +248,7 @@ def au003(node: ast.Call, aliases: dict[str, str], path: str) -> Finding | None:
     return None
 
 
-def _has_timeout(node: ast.Call) -> bool:
+def _has_timeout(node: ast.Call):
     return any(kw.arg == "timeout" for kw in node.keywords)
 
 
@@ -286,7 +285,7 @@ def au004(node: ast.Call, aliases: dict[str, str], path: str) -> Finding | None:
     )
 
 
-RULES: list[tuple[str, Callable[..., Finding | None]]] = [
+RULES = [
     ("AU001", au001),
     ("AU002", au002),
     ("AU003", au003),
@@ -294,8 +293,8 @@ RULES: list[tuple[str, Callable[..., Finding | None]]] = [
 ]
 
 
-def _discover(paths: list[str]) -> list[Path]:
-    files: list[Path] = []
+def _discover(paths: list[str]):
+    files = []
     for raw in paths:
         p = Path(raw)
         if p.is_file() and p.suffix == ".py":
@@ -309,7 +308,7 @@ def _discover(paths: list[str]) -> list[Path]:
     return files
 
 
-def _import_aliases(tree: ast.Module) -> dict[str, str]:
+def _import_aliases(tree: ast.Module):
     """Map local names to real module.function for executor imports."""
     aliases = {}
     for node in ast.walk(tree):
@@ -325,47 +324,231 @@ def _import_aliases(tree: ast.Module) -> dict[str, str]:
     return aliases
 
 
-def scan(paths: list[str]) -> list[Finding]:
-    """Scan Python files for audit findings."""
-    findings: list[Finding] = []
+def _parse_suppression_comment(comment: str) -> tuple[list[str], str | None]:
+    """Parse a shellsafe suppression comment.
+
+    Returns (rule_ids, reason_or_None).
+    Accepts: # shellsafe: ignore RULE[,RULE...] [reason: text]
+    """
+    stripped = comment.strip()
+    if not stripped.startswith("#"):
+        return [], None
+    stripped = stripped[1:].strip()
+    if not stripped.lower().startswith("shellsafe:"):
+        return [], None
+    directive = stripped[len("shellsafe:"):].strip()
+    if not directive.lower().startswith("ignore "):
+        return [], None
+    rest = directive[len("ignore "):]
+    reason = None
+    reason_match = rest.split(" reason:", 1)
+    if len(reason_match) == 2:
+        rest = reason_match[0]
+        reason = reason_match[1].strip() or None
+    rule_ids = [r.strip().upper() for r in rest.split(",") if r.strip()]
+    return rule_ids, reason
+
+
+def _parse_suppressions(
+    source_lines: list[str],
+) -> tuple[set[int], dict[int, tuple[set[str], str | None]]]:
+    """Parse source lines for suppression directives.
+
+    Returns:
+        file_level_rules: rule ids suppressed file-wide (from ignore-file)
+        line_suppressions: line_no -> (set of rule ids, reason)
+    """
+    file_level_rules = set()
+    line_suppressions = {}
+
+    for i, line in enumerate(source_lines, 1):
+        stripped = line.strip()
+        if not stripped.startswith("#"):
+            continue
+        rule_ids, reason = _parse_suppression_comment(stripped)
+        if not rule_ids:
+            if stripped.lower() == "# shellsafe: ignore-file":
+                file_level_rules.add("*")
+            elif stripped.lower().startswith("# shellsafe: ignore-file "):
+                for r in stripped.split(None, 4)[-1].split(","):
+                    r = r.strip().upper()
+                    if r:
+                        file_level_rules.add(r)
+            continue
+        line_suppressions[i] = (set(rule_ids), reason)
+
+    return file_level_rules, line_suppressions
+
+
+def _find_suppressed_line(
+    target_line: int,
+    line_suppressions: dict[int, tuple[set[str], str | None]],
+) -> tuple[set[str], str | None] | None:
+    """Find which rules suppress findings at target_line.
+
+    Checks previous non-blank, non-comment line, then target line itself.
+    """
+    for candidate in (target_line - 1, target_line):
+        if candidate in line_suppressions:
+            return line_suppressions[candidate]
+    return None
+
+
+def _apply_suppression(
+    result: Finding,
+    ignore: set[str] | None,
+    file_rules: set[str],
+    line_suppressions: dict[int, tuple[set[str], str | None]],
+) -> Finding:
+    """Apply suppression rules to a finding. Returns new Finding with ignored flag."""
+    rule_id = result.rule_id
+    suppressed = False
+    ignore_reason = None
+
+    if ignore and rule_id in ignore:
+        return Finding(
+            rule_id=result.rule_id,
+            title=result.title,
+            severity=result.severity,
+            confidence=result.confidence,
+            path=result.path,
+            lineno=result.lineno,
+            col=result.col,
+            message=result.message,
+            evidence=result.evidence,
+            fix_hint=result.fix_hint,
+            ignored=True,
+            ignore_reason="CLI --ignore",
+        )
+    if rule_id in file_rules or "*" in file_rules:
+        suppressed = True
+        ignore_reason = "file-level suppression"
+    else:
+        match = _find_suppressed_line(result.lineno, line_suppressions)
+        if match:
+            rules, reason = match
+            if rule_id in rules:
+                suppressed = True
+                ignore_reason = reason
+
+    if not suppressed:
+        return result
+    return Finding(
+        rule_id=result.rule_id,
+        title=result.title,
+        severity=result.severity,
+        confidence=result.confidence,
+        path=result.path,
+        lineno=result.lineno,
+        col=result.col,
+        message=result.message,
+        evidence=result.evidence,
+        fix_hint=result.fix_hint,
+        ignored=True,
+        ignore_reason=ignore_reason,
+    )
+
+
+def _emit_au010(
+    line_suppressions: dict[int, tuple[set[str], str | None]],
+    rel: str,
+) -> list[Finding]:
+    """Emit AU010 warnings for suppression comments without reasons."""
+    results = []
+    for suppressed_rules, reason in line_suppressions.values():
+        if not reason and suppressed_rules:
+            first_line = next(
+                (ln for ln, (r, _) in line_suppressions.items() if r == suppressed_rules),
+                1,
+            )
+            results.append(
+                Finding(
+                    rule_id="AU010",
+                    title="suppression comment without reason",
+                    severity="info",
+                    confidence=1.0,
+                    path=rel,
+                    lineno=first_line,
+                    col=0,
+                    message=(
+                        f"Suppression for {', '.join(sorted(suppressed_rules))} "
+                        f"has no reason. Add: reason: <why>"
+                    ),
+                    evidence={"rules": sorted(suppressed_rules)},
+                )
+            )
+    return results
+
+
+def scan(paths: list[str], ignore: set[str] | None = None) -> list[Finding]:
+    """Scan Python files for audit findings.
+
+    Args:
+        paths: files or directories to scan.
+        ignore: rule ids to suppress from CLI --ignore flag.
+    """
+    findings = []
     for path in _discover(paths):
         try:
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=str(path))
         except (SyntaxError, UnicodeDecodeError):
             continue
         aliases = _import_aliases(tree)
+        source_lines = source.splitlines()
+        file_rules, line_suppressions = _parse_suppressions(source_lines)
         rel = str(path)
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 for _, rule in RULES:
                     result = rule(node, aliases, rel)
                     if result is not None:
-                        findings.append(result)
+                        findings.append(
+                            _apply_suppression(result, ignore, file_rules, line_suppressions)
+                        )
+        findings.extend(_emit_au010(line_suppressions, rel))
+
     findings.sort(key=lambda f: (f.severity != "error", f.path, f.lineno))
     return findings
 
 
-_COLORS = {"error": "\033[31m", "warning": "\033[33m", "info": "\033[36m", "reset": "\033[0m"}
+_COLORS = {
+    "error": "\033[31m",
+    "warning": "\033[33m",
+    "info": "\033[36m",
+    "ignored": "\033[90m",
+    "reset": "\033[0m",
+}
 
 
-def _color(text: str, severity: str) -> str:
+def _color(text: str, severity: str):
     c = _COLORS.get(severity, "")
     return f"{c}{text}{_COLORS['reset']}" if c else text
 
 
-def report_terminal(findings: list[Finding]) -> str:
+def report_terminal(findings: list[Finding], show_ignored: bool = False) -> str:
     """Render findings as a terminal table."""
     if not findings:
         return "no findings"
     use_color = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+    visible = findings if show_ignored else [f for f in findings if not f.ignored]
+    if not visible:
+        return "no findings"
+    suppressed = sum(1 for f in findings if f.ignored)
     lines = [
         f"{'SEV':<9} {'RULE':<7} {'FILE':<40} {'LINE':>5}  MESSAGE",
         "-" * 90,
     ]
-    for f in findings:
-        sev = _color(f.severity.upper(), f.severity) if use_color else f.severity.upper()
+    for f in visible:
+        if f.ignored:
+            sev = _color("IGNORED", "ignored") if use_color else "IGNORED"
+        else:
+            sev = _color(f.severity.upper(), f.severity) if use_color else f.severity.upper()
         path = f.path if len(f.path) <= 40 else "..." + f.path[-37:]
-        lines.append(f"{sev:<18} {f.rule_id:<7} {path:<40} {f.lineno:>5}  {f.message}")
+        reason = f" [{f.ignore_reason}]" if f.ignore_reason else ""
+        lines.append(f"{sev:<18} {f.rule_id:<7} {path:<40} {f.lineno:>5}  {f.message}{reason}")
+    if suppressed and not show_ignored:
+        lines.append(f"\n  {suppressed} finding(s) suppressed (use --show-ignored to display)")
     return "\n".join(lines)
 
 
@@ -374,10 +557,10 @@ def report_json(report: dict[str, object]) -> str:
     return json.dumps(report, indent=2)
 
 
-def scan_report(paths: list[str]) -> dict[str, object]:
+def scan_report(paths: list[str], ignore: set[str] | None = None) -> dict[str, object]:
     """Scan and return a report dict matching schema v1."""
     start = time.monotonic()
-    findings = scan(paths)
+    findings = scan(paths, ignore=ignore)
     duration_ms = round((time.monotonic() - start) * 1000, 1)
 
     errors = sum(1 for f in findings if f.severity == "error" and not f.ignored)

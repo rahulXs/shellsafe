@@ -165,3 +165,87 @@ def test_all_rules_found():
     assert "AU002" in rule_ids
     assert "AU003" in rule_ids
     assert "AU004" in rule_ids
+
+
+# Suppression tests
+
+
+def test_suppress_with_reason():
+    findings = scan([str(FIXTURES / "suppress_sample.py")])
+    # Line 13: AU001 suppressed with reason
+    au001_ignored = [
+        f for f in findings
+        if f.rule_id == "AU001" and f.ignored and f.ignore_reason == "tested, value is constant"
+    ]
+    assert len(au001_ignored) == 1
+
+
+def test_suppress_multi_rule_with_reason():
+    findings = scan([str(FIXTURES / "suppress_sample.py")])
+    # Line 16: AU001 and AU002 suppressed together with reason
+    multi_ignored = [
+        f for f in findings
+        if f.ignored and f.ignore_reason == "legacy code, tracked for migration"
+    ]
+    rule_ids = {f.rule_id for f in multi_ignored}
+    assert "AU001" in rule_ids
+    assert "AU002" in rule_ids
+
+
+def test_suppress_without_reason_emits_au010():
+    findings = scan([str(FIXTURES / "suppress_sample.py")])
+    # Line 20: AU004 suppressed without reason
+    au004_ignored = [
+        f for f in findings
+        if f.rule_id == "AU004" and f.ignored
+    ]
+    assert len(au004_ignored) == 1
+    assert au004_ignored[0].ignore_reason is None
+    # AU010 should be emitted for the reason-less suppression
+    au010 = [f for f in findings if f.rule_id == "AU010"]
+    assert len(au010) >= 1
+
+
+def test_unsuppressed_findings_still_flagged():
+    findings = scan([str(FIXTURES / "suppress_sample.py")])
+    # Line 24: AU001 with no suppression
+    au001_unsuppressed = [
+        f for f in findings
+        if f.rule_id == "AU001" and not f.ignored
+    ]
+    assert len(au001_unsuppressed) == 1
+
+
+def test_suppress_cli_ignore():
+    findings = scan([str(FIXTURES / "suppress_sample.py")], ignore={"AU001"})
+    # All AU001 findings should be ignored
+    au001 = [f for f in findings if f.rule_id == "AU001"]
+    assert all(f.ignored for f in au001)
+    assert all(f.ignore_reason == "CLI --ignore" for f in au001)
+
+
+def test_suppress_cli_ignore_does_not_affect_other_rules():
+    findings = scan([str(FIXTURES / "suppress_sample.py")], ignore={"AU001"})
+    # AU001 findings are all ignored via CLI
+    au001_active = [
+        f for f in findings
+        if f.rule_id == "AU001" and not f.ignored
+    ]
+    assert len(au001_active) == 0
+    # AU004 without suppression is still active
+    au004_active = [
+        f for f in findings
+        if f.rule_id == "AU004" and not f.ignored
+    ]
+    assert len(au004_active) >= 1
+
+
+def test_suppress_cli_ignore_multiple_rules():
+    findings = scan(
+        [str(FIXTURES / "suppress_sample.py")],
+        ignore={"AU001", "AU002"},
+    )
+    au001 = [f for f in findings if f.rule_id == "AU001"]
+    au002 = [f for f in findings if f.rule_id == "AU002"]
+    assert all(f.ignored for f in au001)
+    assert all(f.ignored for f in au002)

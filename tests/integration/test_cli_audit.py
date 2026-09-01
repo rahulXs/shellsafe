@@ -203,3 +203,104 @@ def test_audit_cli_all_rules():
     assert "AU002" in rule_ids
     assert "AU003" in rule_ids
     assert "AU004" in rule_ids
+
+
+def test_audit_cli_suppress_inline():
+    out = subprocess.run(
+        [sys.executable, "-m", "shellsafe", "audit", str(FIXTURES / "suppress_sample.py")],
+        capture_output=True,
+        text=True,
+    )
+    assert "suppressed" in out.stdout
+
+
+def test_audit_cli_suppress_show_ignored():
+    out = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "shellsafe",
+            "audit",
+            str(FIXTURES / "suppress_sample.py"),
+            "--show-ignored",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert "IGNORED" in out.stdout
+
+
+def test_audit_cli_suppress_json():
+    out = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "shellsafe",
+            "audit",
+            str(FIXTURES / "suppress_sample.py"),
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    report = json.loads(out.stdout)
+    ignored = [f for f in report["findings"] if f["ignored"]]
+    assert len(ignored) >= 3
+    assert report["summary"]["ignored"] >= 3
+
+
+def test_audit_cli_ignore_flag():
+    out = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "shellsafe",
+            "audit",
+            str(FIXTURES / "suppress_sample.py"),
+            "--ignore",
+            "AU001",
+            "--show-ignored",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert "CLI --ignore" in out.stdout
+
+
+def test_audit_cli_ignore_flag_json():
+    out = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "shellsafe",
+            "audit",
+            str(FIXTURES / "suppress_sample.py"),
+            "--ignore",
+            "AU001",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    report = json.loads(out.stdout)
+    au001 = [f for f in report["findings"] if f["rule_id"] == "AU001"]
+    assert all(f["ignored"] for f in au001)
+    assert all(f["ignore_reason"] == "CLI --ignore" for f in au001)
+
+
+def test_audit_cli_au010_in_output():
+    out = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "shellsafe",
+            "audit",
+            str(FIXTURES / "suppress_sample.py"),
+            "--severity",
+            "info",
+            "--show-ignored",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert "AU010" in out.stdout

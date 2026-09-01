@@ -3,7 +3,6 @@
 import subprocess
 import sys
 from dataclasses import dataclass
-from typing import Any
 
 from .errors import ArgvOnlyError, ShellSafeError
 from .raw import Raw  # noqa: F401  (re-exported through the package root)
@@ -48,7 +47,7 @@ def plan(template: object) -> ExecutionPlan:
     return render_plan(template)
 
 
-def _pass_through(kwargs: dict[str, object]) -> dict[str, Any]:
+def _pass_through(kwargs: dict[str, object]):
     return {k: v for k, v in kwargs.items() if k in _ALLOWED_KWARGS}
 
 
