@@ -108,6 +108,19 @@ Filter by severity:
 shellsafe audit src/ --severity warning
 ```
 
+Suppress known-safe findings inline:
+
+```python
+# shellsafe: ignore AU001 reason: tested, value is constant
+os.system(f"echo {safe_value}")
+```
+
+Suppress from the command line:
+
+```bash
+shellsafe audit src/ --ignore AU004
+```
+
 ## Limits
 
 - Shell features (pipes, redirections) work on Linux and macOS only. Windows
