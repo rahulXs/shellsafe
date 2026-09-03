@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format follows
 Keep a Changelog; versioning follows SemVer.
 
+## [0.3.4] - 2026-09-03
+
+### Fixed
+
+- Export `plan()` from public surface (`__init__.py`); was defined in
+  `execute.py` but not listed in `__all__`, causing `ImportError` on
+  `from shellsafe import plan`
+
 ## [0.3.3] - 2026-09-01
 
 ### Added
