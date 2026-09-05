@@ -1,6 +1,6 @@
 # Shell commands in Python just got safe
 
-Python 3.14 shipped template strings last month. I built a library that uses them to make shell injection impossible. Here is what changed and why it matters.
+Python 3.14 shipped in October 2025 with template strings (PEP 750). I built a library that uses them to make shell injection impossible. Here is what changed and why it matters.
 
 ## The one line that causes problems
 
