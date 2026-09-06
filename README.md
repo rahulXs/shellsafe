@@ -139,6 +139,7 @@ shellsafe audit src/ --ignore AU004
 ## More
 
 - Source and issues: [github.com/rahulXs/shellsafe](https://github.com/rahulXs/shellsafe)
+- Blog: [rahulxs.github.io/shellsafe](https://rahulxs.github.io/shellsafe/)
 - Want to help? See CONTRIBUTING.md in the repository.
 
 License: MIT

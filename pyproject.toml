@@ -34,6 +34,7 @@ Homepage = "https://github.com/rahulXs/shellsafe"
 Repository = "https://github.com/rahulXs/shellsafe"
 Issues = "https://github.com/rahulXs/shellsafe/issues"
 Changelog = "https://github.com/rahulXs/shellsafe/blob/main/CHANGELOG.md"
+Blog = "https://rahulxs.github.io/shellsafe/"
 
 [tool.hatch.version]
 path = "src/shellsafe/_version.py"
