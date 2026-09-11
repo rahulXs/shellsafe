@@ -7,7 +7,7 @@ import ast
 import json
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -158,13 +158,15 @@ def _track_dynamic_vars(tree: ast.Module):
     """Find variables assigned dynamic string expressions."""
     dynamic = set()
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        if not _is_dynamic_string(node.value):
-            continue
-        for target in node.targets:
-            if isinstance(target, ast.Name):
-                dynamic.add(target.id)
+        if isinstance(node, ast.Assign):
+            if not _is_dynamic_string(node.value):
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    dynamic.add(target.id)
+        elif isinstance(node, ast.NamedExpr):
+            if _is_dynamic_string(node.value) and isinstance(node.target, ast.Name):
+                dynamic.add(node.target.id)
     return dynamic
 
 
@@ -300,11 +302,17 @@ def _discover(paths: list[str]):
         if p.is_file() and p.suffix == ".py":
             files.append(p)
         elif p.is_dir():
-            files.extend(
-                f
-                for f in sorted(p.rglob("*.py"))
-                if not any(part.startswith(".") or part == "__pycache__" for part in f.parts)
-            )
+            import os
+
+            for dirpath, dirnames, filenames in os.walk(p, followlinks=True):
+                dirnames[:] = [
+                    d for d in dirnames
+                    if not d.startswith(".") and d != "__pycache__"
+                ]
+                for name in filenames:
+                    if name.endswith(".py"):
+                        files.append(Path(dirpath) / name)
+            files.sort()
     return files
 
 
@@ -341,10 +349,11 @@ def _parse_suppression_comment(comment: str) -> tuple[list[str], str | None]:
         return [], None
     rest = directive[len("ignore "):]
     reason = None
-    reason_match = rest.split(" reason:", 1)
-    if len(reason_match) == 2:
-        rest = reason_match[0]
-        reason = reason_match[1].strip() or None
+    reason_lower = rest.lower()
+    reason_idx = reason_lower.find(" reason:")
+    if reason_idx != -1:
+        reason = rest[reason_idx + 8:].strip() or None
+        rest = rest[:reason_idx]
     rule_ids = [r.strip().upper() for r in rest.split(",") if r.strip()]
     return rule_ids, reason
 
@@ -386,11 +395,14 @@ def _find_suppressed_line(
 ) -> tuple[set[str], str | None] | None:
     """Find which rules suppress findings at target_line.
 
-    Checks previous non-blank, non-comment line, then target line itself.
+    Checks up to 5 previous non-blank lines, then the target line itself.
     """
-    for candidate in (target_line - 1, target_line):
+    for offset in range(1, 6):
+        candidate = target_line - offset
         if candidate in line_suppressions:
             return line_suppressions[candidate]
+    if target_line in line_suppressions:
+        return line_suppressions[target_line]
     return None
 
 
@@ -402,24 +414,13 @@ def _apply_suppression(
 ) -> Finding:
     """Apply suppression rules to a finding. Returns new Finding with ignored flag."""
     rule_id = result.rule_id
+
+    if ignore and rule_id in ignore:
+        return replace(result, ignored=True, ignore_reason="CLI --ignore")
+
     suppressed = False
     ignore_reason = None
 
-    if ignore and rule_id in ignore:
-        return Finding(
-            rule_id=result.rule_id,
-            title=result.title,
-            severity=result.severity,
-            confidence=result.confidence,
-            path=result.path,
-            lineno=result.lineno,
-            col=result.col,
-            message=result.message,
-            evidence=result.evidence,
-            fix_hint=result.fix_hint,
-            ignored=True,
-            ignore_reason="CLI --ignore",
-        )
     if rule_id in file_rules or "*" in file_rules:
         suppressed = True
         ignore_reason = "file-level suppression"
@@ -433,24 +434,12 @@ def _apply_suppression(
 
     if not suppressed:
         return result
-    return Finding(
-        rule_id=result.rule_id,
-        title=result.title,
-        severity=result.severity,
-        confidence=result.confidence,
-        path=result.path,
-        lineno=result.lineno,
-        col=result.col,
-        message=result.message,
-        evidence=result.evidence,
-        fix_hint=result.fix_hint,
-        ignored=True,
-        ignore_reason=ignore_reason,
-    )
+    return replace(result, ignored=True, ignore_reason=ignore_reason)
 
 
 def _emit_au010(
     line_suppressions: dict[int, tuple[set[str], str | None]],
+    file_rules: set[str],
     rel: str,
 ) -> list[Finding]:
     """Emit AU010 warnings for suppression comments without reasons."""
@@ -475,6 +464,24 @@ def _emit_au010(
                         f"has no reason. Add: reason: <why>"
                     ),
                     evidence={"rules": sorted(suppressed_rules)},
+                )
+            )
+    if file_rules and "*" not in file_rules:
+        for rule in sorted(file_rules):
+            results.append(
+                Finding(
+                    rule_id="AU010",
+                    title="suppression comment without reason",
+                    severity="info",
+                    confidence=1.0,
+                    path=rel,
+                    lineno=1,
+                    col=0,
+                    message=(
+                        f"File-level suppression for {rule} "
+                        f"has no reason. Add: reason: <why>"
+                    ),
+                    evidence={"rules": [rule], "file_level": True},
                 )
             )
     return results
@@ -506,7 +513,7 @@ def scan(paths: list[str], ignore: set[str] | None = None) -> list[Finding]:
                         findings.append(
                             _apply_suppression(result, ignore, file_rules, line_suppressions)
                         )
-        findings.extend(_emit_au010(line_suppressions, rel))
+        findings.extend(_emit_au010(line_suppressions, file_rules, rel))
 
     findings.sort(key=lambda f: (f.severity != "error", f.path, f.lineno))
     return findings

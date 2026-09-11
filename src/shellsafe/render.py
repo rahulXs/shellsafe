@@ -83,10 +83,15 @@ def _resolve(interpolation: Interpolation[str]) -> str:
         )
 
     if format_spec:
-        return format(converted, format_spec)
-    if conversion is None:
-        return str(converted)
-    return converted
+        result = format(converted, format_spec)
+    elif conversion is None:
+        result = str(converted)
+    else:
+        result = converted
+
+    if not isinstance(result, str):
+        result = str(result)
+    return result
 
 
 def _reject_nul(resolved: str):
@@ -176,4 +181,9 @@ def _render_shell(parts: list[Segment]) -> ExecutionPlan:
     line = "".join(line_parts).strip()
     if not line:
         raise ShellSafeTypeError("empty command")
+    if len(line) > 131072:
+        raise ShellSafeTypeError(
+            f"shell line exceeds 128KB ({len(line)} bytes); "
+            "use argv mode or shorten the command"
+        )
     return ExecutionPlan(mode="shell", shell_line=line)

@@ -25,9 +25,9 @@ subprocess.run(f"git commit -m {message}", shell=True)
 # if message = "fix; rm -rf ~"  ->  two commands run. The second one is bad.
 ```
 
-Python planned to solve this officially (PEP 787), but that PEP was deferred to
-at least Python 3.15. So today there is no standard way to run shell commands
-safely with templates. This package fills that gap.
+Python planned to solve this officially (PEP 787), but that PEP is still deferred.
+It is not in the Python 3.15 release candidates. So today there is no standard
+way to run shell commands safely with templates. This package fills that gap.
 
 ## Install
 

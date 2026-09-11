@@ -51,15 +51,14 @@ def _pass_through(kwargs: dict[str, object]):
     return {k: v for k, v in kwargs.items() if k in _ALLOWED_KWARGS}
 
 
-def run(template: object, /, **kwargs: object) -> subprocess.CompletedProcess[str]:
-    """Render the template and execute it.
+def _render(
+    template: object, kwargs: dict[str, object]
+) -> tuple[ExecutionPlan, subprocess.CompletedProcess[str]]:
+    """Render template and execute, returning both plan and result."""
+    from .render import plan as render_plan
 
-    Interpolated values always arrive as single argv elements. Keyword arguments
-    pass through to subprocess.run with one exception: shell is rejected by
-    design.
-    """
     _validate_kwargs(kwargs)
-    rendered = plan(template)
+    rendered = render_plan(template)
     if rendered.mode == "shell":
         if sys.platform.startswith("win"):
             raise ShellSafeError(
@@ -71,7 +70,19 @@ def run(template: object, /, **kwargs: object) -> subprocess.CompletedProcess[st
             "run() to execute pipes and redirections"
         )
     assert rendered.argv is not None
-    return subprocess.run(rendered.argv, **_pass_through(kwargs))
+    completed = subprocess.run(rendered.argv, **_pass_through(kwargs))
+    return rendered, completed
+
+
+def run(template: object, /, **kwargs: object) -> subprocess.CompletedProcess[str]:
+    """Render the template and execute it.
+
+    Interpolated values always arrive as single argv elements. Keyword arguments
+    pass through to subprocess.run with one exception: shell is rejected by
+    design.
+    """
+    _, completed = _render(template, kwargs)
+    return completed
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,18 +94,24 @@ class CaptureResult:
     returncode: int
     plan: ExecutionPlan
 
+    def __repr__(self) -> str:
+        return (
+            f"CaptureResult(returncode={self.returncode}, "
+            f"stdout={self.stdout!r}, stderr={self.stderr!r})"
+        )
+
 
 def capture(template: object, /, **kwargs: object) -> CaptureResult:
     """Run with captured utf-8 stdout/stderr and return a CaptureResult."""
     kwargs["capture_output"] = True
     kwargs["text"] = True
     kwargs["encoding"] = "utf-8"
-    completed = run(template, **kwargs)
+    rendered, completed = _render(template, kwargs)
     return CaptureResult(
         stdout=completed.stdout,
         stderr=completed.stderr,
         returncode=completed.returncode,
-        plan=plan(template),
+        plan=rendered,
     )
 
 

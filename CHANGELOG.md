@@ -3,6 +3,24 @@
 All notable changes to this project are documented here. Format follows
 Keep a Changelog; versioning follows SemVer.
 
+## [0.3.5] - 2026-09-11
+
+### Fixed
+
+- `capture()` no longer renders template twice
+- `_resolve` always returns `str` (defense-in-depth)
+- Suppression comment check extended to 5 lines back (was 1)
+- AU010 now flags file-level suppressions without reasons
+- Audit scanner follows symlinks
+- Walrus operator (`:=`) tracked by AU003
+
+### Changed
+
+- Shell line length guard (128KB max)
+- Suppression `reason:` is now case-insensitive
+- `_apply_suppression` uses `dataclasses.replace` (internal cleanup)
+- PEP 787 status updated to reflect ongoing deferral
+
 ## [0.3.4] - 2026-09-03
 
 ### Fixed
